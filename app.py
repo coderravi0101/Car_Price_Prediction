@@ -1,10 +1,10 @@
 import streamlit as st
 import joblib
 import numpy as np
+import pandas as pd
+import os
 
-# -----------------------------
 # PAGE CONFIG
-# -----------------------------
 st.set_page_config(
     page_title="Car Price Prediction System",
     page_icon="🚗",
@@ -12,15 +12,7 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# -----------------------------
-# LOAD MODEL
-# -----------------------------
-model = joblib.load("car_price_model.pkl")
-encoders = joblib.load("label_encoders.pkl")
-
-# -----------------------------
 # CUSTOM CSS
-# -----------------------------
 st.markdown("""
 <style>
 
@@ -243,14 +235,37 @@ margin-top:20px;
 </style>
 """, unsafe_allow_html=True)
 
-# ===============================
+# LOAD MODEL WITH ERROR HANDLING
+@st.cache_resource
+def load_model_and_encoders():
+    """Load model and encoders with error handling"""
+    try:
+        model_path = "car_price_model.pkl"
+        encoders_path = "label_encoders.pkl"
+        
+        if not os.path.exists(model_path):
+            st.error(f"❌ Model file '{model_path}' not found!")
+            return None, None
+        
+        if not os.path.exists(encoders_path):
+            st.error(f"❌ Encoders file '{encoders_path}' not found!")
+            return None, None
+        
+        model = joblib.load(model_path)
+        encoders = joblib.load(encoders_path)
+        return model, encoders
+    except Exception as e:
+        st.error(f"❌ Error loading files: {str(e)}")
+        return None, None
+
+model, encoders = load_model_and_encoders()
+
+if model is None or encoders is None:
+    st.stop()
+
 # SIDEBAR
-# ===============================
-
 st.sidebar.markdown("# 🚗 Car Price Prediction")
-
 st.sidebar.markdown("---")
-
 st.sidebar.markdown("### INPUT FEATURES")
 
 year = st.sidebar.number_input(
@@ -274,7 +289,7 @@ kms_driven = st.sidebar.number_input(
 
 fuel_type = st.sidebar.selectbox(
     "Fuel Type",
-    ["Petrol","Diesel","CNG"]
+    ["Petrol","Diesel"]
 )
 
 seller_type = st.sidebar.selectbox(
@@ -307,9 +322,8 @@ st.sidebar.markdown("""
 </div>
 
 """, unsafe_allow_html=True)
-# =====================================================
+
 # MAIN HEADER
-# =====================================================
 
 st.markdown(
     """
@@ -328,72 +342,110 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
+# VALIDATION FUNCTION
+def validate_inputs(year, present_price, kms_driven):
+    """Validate user inputs before prediction"""
+    errors = []
+    
+    if present_price <= 0:
+        errors.append("❌ Present Price must be greater than 0")
+    
+    if year < 2000 or year > 2025:
+        errors.append("❌ Year must be between 2000 and 2025")
+    
+    if kms_driven < 0:
+        errors.append("❌ Kilometers Driven cannot be negative")
+    
+    return errors
 
-# =====================================================
-# PREDICTION
-# =====================================================
+# PREDICTION LOGIC
 
 if predict:
+    # Validate inputs
+    validation_errors = validate_inputs(year, present_price, kms_driven)
+    
+    if validation_errors:
+        for error in validation_errors:
+            st.warning(error)
+    else:
+        try:
+            # Encode categorical variables
+            fuel = encoders["Fuel_Type"].transform([fuel_type])[0]
+            seller = encoders["Seller_Type"].transform([seller_type])[0]
+            trans = encoders["Transmission"].transform([transmission])[0]
 
-    fuel = encoders["Fuel_Type"].transform([fuel_type])[0]
-    seller = encoders["Seller_Type"].transform([seller_type])[0]
-    trans = encoders["Transmission"].transform([transmission])[0]
+            # Prepare data for prediction
+            input_data = np.array([[
+                year,
+                present_price,
+                kms_driven,
+                fuel,
+                seller,
+                trans,
+                owner
+            ]])
 
-    input_data = np.array([
-        [
-            year,
-            present_price,
-            kms_driven,
-            fuel,
-            seller,
-            trans,
-            owner
-        ]
-    ])
+            # Make prediction
+            prediction = model.predict(input_data)[0]
 
-    prediction = model.predict(input_data)[0]
+            # Ensure prediction is non-negative
+            if prediction < 0:
+                prediction = 0
 
-    if prediction < 0:
-        prediction = 0
+            # Calculate price change
+            price_change = prediction - present_price
+            percentage_change = (price_change / present_price * 100) if present_price > 0 else 0
 
-    st.markdown(
-        f"""
-        <div class="prediction-card">
+            st.markdown(
+                f"""
+                <div class="prediction-card">
 
-            <h1 style="color:#08752c;">
-                Estimated Selling Price
-            </h1>
+                    <h1 style="color:#08752c;">
+                        Estimated Selling Price
+                    </h1>
 
-            <div class="price">
-                ₹ {prediction:.2f} Lakhs
-            </div>
+                    <div class="price">
+                        ₹ {prediction:.2f} Lakhs
+                    </div>
 
-            <br>
+                    <br>
 
-            <div class="success">
-                ✅ Prediction Completed Successfully
-            </div>
+                    <div class="success">
+                        ✅ Prediction Completed Successfully
+                    </div>
 
-            <div class="model-card">
+                    <div class="model-card">
 
-                <h2 style="color:#08752c;">
-                    📊 Model Information
-                </h2>
+                        <h2 style="color:#08752c;">
+                            📊 Model Information
+                        </h2>
 
-                <h3>
-                    Machine Learning Regression Model
-                </h3>
+                        <h3>
+                            Machine Learning Regression Model
+                        </h3>
 
-                <h2 style="color:#0a6d2a;">
-                    Random Forest Regressor
-                </h2>
+                        <h2 style="color:#0a6d2a;">
+                            Random Forest Regressor
+                        </h2>
 
-            </div>
+                    </div>
 
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
+
+            # Display metrics
+            col1, col2, col3 = st.columns(3)
+            with col1:
+                st.metric("Predicted Price", f"₹ {prediction:.2f} Lakhs")
+            with col2:
+                st.metric("Present Price", f"₹ {present_price:.2f} Lakhs")
+            with col3:
+                st.metric("Price Change", f"₹ {price_change:.2f} ({percentage_change:+.1f}%)")
+
+        except Exception as e:
+            st.error(f"❌ Error during prediction: {str(e)}")
 
 else:
 
@@ -435,9 +487,8 @@ else:
         """,
         unsafe_allow_html=True,
     )
-    # =====================================================
+
 # INPUT SUMMARY
-# =====================================================
 
 st.markdown("<br>", unsafe_allow_html=True)
 
@@ -462,9 +513,7 @@ st.table(summary_data)
 
 st.markdown("</div>", unsafe_allow_html=True)
 
-# =====================================================
 # ABOUT & DISCLAIMER
-# =====================================================
 
 col1, col2 = st.columns(2)
 
@@ -542,9 +591,7 @@ with col2:
     </div>
     """, unsafe_allow_html=True)
 
-# =====================================================
 # FOOTER
-# =====================================================
 
 st.markdown("<br>", unsafe_allow_html=True)
 
@@ -568,15 +615,12 @@ Machine Learning | Artificial Intelligence | Data Science
 </center>
 
 """, unsafe_allow_html=True)
-# =====================================================
+
 # PREMIUM UI FEATURES
-# =====================================================
 
 st.markdown("<br>", unsafe_allow_html=True)
 
-# -------------------------------
 # Accuracy & Status
-# -------------------------------
 
 col1, col2, col3 = st.columns(3)
 
@@ -600,9 +644,7 @@ with col3:
 
 st.markdown("<br>", unsafe_allow_html=True)
 
-# -------------------------------
 # Confidence
-# -------------------------------
 
 st.markdown("### 🎯 Prediction Confidence")
 
@@ -612,16 +654,12 @@ st.progress(confidence)
 
 st.success(f"Model Confidence : {confidence}%")
 
-# -------------------------------
 # Success Animation
-# -------------------------------
 
 if predict:
     st.balloons()
 
-# -------------------------------
 # Download Report
-# -------------------------------
 
 if predict:
 
@@ -671,9 +709,7 @@ Random Forest Regressor
         mime="text/plain"
     )
 
-# -------------------------------
 # Expandable Information
-# -------------------------------
 
 with st.expander("📚 How does this model work?"):
 
@@ -705,9 +741,7 @@ The model was trained on historical car sales data.
 
 """)
 
-# -------------------------------
 # Thank You
-# -------------------------------
 
 st.markdown("<br>", unsafe_allow_html=True)
 
