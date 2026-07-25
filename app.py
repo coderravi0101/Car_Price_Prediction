@@ -447,47 +447,6 @@ if predict:
         except Exception as e:
             st.error(f"❌ Error during prediction: {str(e)}")
 
-else:
-
-    st.markdown(
-        """
-        <div class="prediction-card">
-
-            <h1 style="color:#08752c;">
-                Estimated Selling Price
-            </h1>
-
-            <div class="price">
-                ₹ --.-- Lakhs
-            </div>
-
-            <br>
-
-            <div class="success">
-                Click <b>Predict Car Price</b> to get prediction
-            </div>
-
-            <div class="model-card">
-
-                <h2 style="color:#08752c;">
-                    📊 Model Information
-                </h2>
-
-                <h3>
-                    Machine Learning Regression Model
-                </h3>
-
-                <h2 style="color:#0a6d2a;">
-                    Random Forest Regressor
-                </h2>
-
-            </div>
-
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-
 # INPUT SUMMARY
 
 st.markdown("<br>", unsafe_allow_html=True)
